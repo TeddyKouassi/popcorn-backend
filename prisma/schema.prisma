@@ -71,6 +71,7 @@ model Order {
   paymentStatus String      @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
   paymentMethod String      @default("CASH_ON_DELIVERY") // CASH_ON_DELIVERY, MOBILE_MONEY, CARD, WHATSAPP
   paymentRef    String?
+  paymentAccessTokenHash String? @unique // Autorisation éphémère pour un paiement invité
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

@@ -8,7 +8,7 @@ export const createOrderSchema = z.object({
   address: z.string().min(3, "L'adresse précise est obligatoire"),
   note: z.string().max(500, "La note ne peut pas dépasser 500 caractères").optional().nullable(),
   paymentMethod: z
-    .enum(["CASH_ON_DELIVERY", "MOBILE_MONEY", "CARD", "WHATSAPP"])
+    .enum(["CASH_ON_DELIVERY", "SASPAY", "MOBILE_MONEY", "CARD", "WHATSAPP"])
     .default("CASH_ON_DELIVERY"),
   items: z
     .array(

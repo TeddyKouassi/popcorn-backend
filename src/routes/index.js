@@ -6,6 +6,7 @@ import orderRoutes from "./orderRoutes.js";
 import contactRoutes from "./contactRoutes.js";
 import adminRoutes from "./adminRoutes.js";
 import invoiceRoutes from "./invoiceRoutes.js";
+import paymentRoutes from "./paymentRoutes.js";
 
 const apiRouter = Router();
 
@@ -16,6 +17,7 @@ apiRouter.use("/orders", orderRoutes);
 apiRouter.use("/contact", contactRoutes);
 apiRouter.use("/admin", adminRoutes);
 apiRouter.use("/invoices", invoiceRoutes);
+apiRouter.use("/payments", paymentRoutes);
 
 // Route de santé (Health Check)
 apiRouter.get("/health", (req, res) => {

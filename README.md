@@ -49,6 +49,9 @@ node prisma/seed.js
 # Ouvrir l'interface graphique d'administration Prisma Studio
 npx prisma studio
 
+# Appliquer uniquement les migrations déjà versionnées (production)
+npm run prisma:deploy
+
 
 ---
 
@@ -122,6 +125,36 @@ Ne publiez jamais :
 * informations d'accès à la base de données.
 
 Avant tout déploiement en production, remplacez les valeurs de développement par des secrets sécurisés et spécifiques à l'environnement de production.
+
+---
+
+## Déploiement
+
+Le projet ne présume d'aucun hébergeur ni d'aucune base de données. Le backend doit
+disposer d'un stockage compatible avec le schéma Prisma actuellement configuré et
+d'un stockage persistant pour les factures générées. En production,
+`DATABASE_URL` est obligatoire : aucun fichier SQLite local n'est choisi par défaut.
+
+Définissez en production au minimum :
+
+* `NODE_ENV=production`
+* `PORT` (fourni par l'hébergeur si applicable)
+* `DATABASE_URL` (choisie explicitement pour l'environnement de production)
+* `JWT_SECRET` (secret long, aléatoire et propre à cet environnement)
+* `CLIENT_URL` (URL publique exacte du frontend)
+* `CORS_ORIGINS` (origines frontend autorisées, séparées par des virgules)
+
+Avant de démarrer une nouvelle version, exécutez `npm ci`, puis `npm run prisma:deploy`,
+et enfin `npm start`. `prisma:deploy` n'exécute que les migrations versionnées ; ne
+lancez ni `prisma migrate dev` ni `prisma db push` contre la production.
+
+La sonde de vivacité est `GET /api/health` et retourne HTTP 200 sans nécessiter
+d'authentification. Elle ne teste pas la base de données, afin de rester disponible
+pendant un incident de dépendance.
+
+SasPay reste désactivé par défaut (`SASPAY_ENABLED=false`). Ne l'activez pas tant
+que le contrat API officiel, les identifiants et le format de signature webhook ne
+sont pas confirmés par SasPay.
 
 ---
 

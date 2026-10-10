@@ -21,17 +21,27 @@ export async function downloadInvoice(req, res, next) {
       });
     }
 
-    // Sécurité : autoriser si admin, si client propriétaire, ou si accès par référence publique de commande
-    if (
-      req.user &&
-      req.user.role !== "ADMIN" &&
-      order.userId &&
-      order.userId !== req.user.id
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Accès refusé à cette facture.",
-      });
+    // Sécurité : autoriser uniquement si admin ou si client propriétaire
+    if (order.userId !== null) {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentification requise pour télécharger cette facture.",
+        });
+      }
+      if (req.user.role !== "ADMIN" && order.userId !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: "Accès refusé à cette facture.",
+        });
+      }
+    } else {
+      if (!req.user || req.user.role !== "ADMIN") {
+        return res.status(403).json({
+          success: false,
+          message: "Accès refusé à cette facture.",
+        });
+      }
     }
 
     let pdfFilename = order.invoice?.pdfPath;

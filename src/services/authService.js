@@ -105,3 +105,24 @@ export async function getUserProfile(userId) {
 
   return user;
 }
+
+export async function updateUserProfile(userId, { name, phone }) {
+  const data = {};
+  if (name !== undefined) data.name = name.trim();
+  if (phone !== undefined) data.phone = phone.trim();
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  return user;
+}

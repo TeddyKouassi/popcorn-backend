@@ -41,3 +41,18 @@ export async function getMe(req, res, next) {
     next(error);
   }
 }
+
+export async function updateProfile(req, res, next) {
+  try {
+    const { name, phone } = req.body;
+    const updatedUser = await authService.updateUserProfile(req.user.id, { name, phone });
+
+    res.status(200).json({
+      success: true,
+      message: "Profil mis à jour avec succès.",
+      data: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+}

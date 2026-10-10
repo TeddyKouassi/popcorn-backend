@@ -76,9 +76,9 @@ description: cat.description,
 create: cat,
 });
 
-```
+
 categories[cat.name] = createdCat.id;
-```
+
 
 }
 

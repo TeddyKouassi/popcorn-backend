@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import crypto from "crypto";
 import { generateInvoicePdf } from "./invoiceService.js";
 import { sendOrderConfirmationEmail } from "./emailService.js";
 import { buildWhatsAppOrderUrl } from "./whatsappService.js";
@@ -19,6 +20,13 @@ export async function createOrder({
   items,
   userId = null,
 }) {
+  // A guest receives this opaque value only in the create-order response. The
+  // database stores its hash, so an order ID alone cannot operate a payment.
+  const paymentAccessToken = userId ? null : crypto.randomBytes(32).toString("base64url");
+  const paymentAccessTokenHash = paymentAccessToken
+    ? crypto.createHash("sha256").update(paymentAccessToken).digest("hex")
+    : null;
+
   const result = await prisma.$transaction(async (tx) => {
     // 1. Récupération des IDs produits demandés
     const productIds = items.map((i) => i.productId);
@@ -62,15 +70,20 @@ export async function createOrder({
         total: itemTotal,
       });
 
-      // 3. Décrémentation atomique du stock
-      await tx.product.update({
-        where: { id: product.id },
+      // 3. Décrémentation conditionnelle : la vérification initiale peut être
+      // devenue obsolète si une autre commande a été validée entre-temps.
+      const stockUpdate = await tx.product.updateMany({
+        where: { id: product.id, stock: { gte: item.quantity } },
         data: {
           stock: {
             decrement: item.quantity,
           },
         },
       });
+
+      if (stockUpdate.count !== 1) {
+        throw new Error(`Stock insuffisant pour "${product.name}" au moment de valider la commande.`);
+      }
     }
 
     // 4. Génération d'un numéro de commande unique (ex: POP-2026-1042)
@@ -98,6 +111,7 @@ export async function createOrder({
         paymentMethod,
         paymentStatus: "PENDING",
         status: "PENDING",
+        paymentAccessTokenHash,
         userId,
         items: {
           create: orderItemsData,
@@ -155,6 +169,7 @@ export async function createOrder({
   return {
     ...fullOrder,
     whatsappUrl,
+    ...(paymentAccessToken ? { paymentAccessToken } : {}),
   };
 }
 
@@ -176,17 +191,31 @@ export async function getOrderById(id, requestingUser = null) {
     throw error;
   }
 
-  // Vérification des droits : si un utilisateur client consulte, il doit être le propriétaire
-  if (requestingUser && requestingUser.role !== "ADMIN" && order.userId !== requestingUser.id) {
-    const error = new Error("Accès interdit à cette commande.");
-    error.statusCode = 403;
-    throw error;
+  // Vérification stricte des droits d'accès à la commande
+  if (order.userId !== null) {
+    if (!requestingUser) {
+      const error = new Error("Authentification requise pour consulter cette commande.");
+      error.statusCode = 401;
+      throw error;
+    }
+    if (requestingUser.role !== "ADMIN" && order.userId !== requestingUser.id) {
+      const error = new Error("Accès interdit à cette commande.");
+      error.statusCode = 403;
+      throw error;
+    }
+  } else {
+    // Si la commande n'a pas de compte client associé (commande invité)
+    if (!requestingUser || requestingUser.role !== "ADMIN") {
+      const error = new Error("Veuillez utiliser la page de suivi public avec votre numéro de commande.");
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   return order;
 }
 
-export async function getOrderByNumber(orderNumber) {
+export async function getOrderByNumber(orderNumber, requestingUser = null, paymentAccessToken = null) {
   const order = await prisma.order.findUnique({
     where: { orderNumber: orderNumber.trim() },
     include: {
@@ -201,6 +230,34 @@ export async function getOrderByNumber(orderNumber) {
     const error = new Error(`Aucune commande trouvée avec la référence "${orderNumber}".`);
     error.statusCode = 404;
     throw error;
+  }
+
+  if (order.userId !== null) {
+    if (!requestingUser || (requestingUser.role !== "ADMIN" && requestingUser.id !== order.userId)) {
+      const error = new Error("Accès interdit à cette commande.");
+      error.statusCode = 403;
+      throw error;
+    }
+  } else if (requestingUser?.role !== "ADMIN") {
+    if (!paymentAccessToken || !order.paymentAccessTokenHash) {
+      const error = new Error("Le jeton d'accès de cette commande invitée est requis.");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const actualTokenHash = crypto
+      .createHash("sha256")
+      .update(paymentAccessToken)
+      .digest("hex");
+    const hasValidToken = crypto.timingSafeEqual(
+      Buffer.from(actualTokenHash, "utf8"),
+      Buffer.from(order.paymentAccessTokenHash, "utf8"),
+    );
+    if (!hasValidToken) {
+      const error = new Error("Le jeton d'accès de cette commande invitée est invalide.");
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   return order;
@@ -248,12 +305,39 @@ export async function getAllOrders({ status, page = 1, limit = 20 }) {
 }
 
 export async function updateOrderStatus(id, status, paymentStatus) {
+  const numericId = Number(id);
+  const existingOrder = await prisma.order.findUnique({ where: { id: numericId } });
+  if (!existingOrder) {
+    const error = new Error("Commande introuvable.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // A payment state can only be established by the payment workflow. In
+  // particular, the generic admin status endpoint must not forge PAID.
+  if (paymentStatus && paymentStatus !== existingOrder.paymentStatus) {
+    const error = new Error("Le statut de paiement ne peut pas être modifié depuis cette route.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (existingOrder.paymentStatus === "PAID" && status === "CANCELLED") {
+    const error = new Error("Une commande payée ne peut pas être annulée depuis cette route.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (existingOrder.status === "CANCELLED" && status && status !== "CANCELLED") {
+    const error = new Error("Une commande annulée ne peut pas être réactivée depuis cette route.");
+    error.statusCode = 409;
+    throw error;
+  }
+
   const data = {};
   if (status) data.status = status;
-  if (paymentStatus) data.paymentStatus = paymentStatus;
 
   const updated = await prisma.order.update({
-    where: { id: Number(id) },
+    where: { id: numericId },
     data,
     include: {
       items: true,

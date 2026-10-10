@@ -41,7 +41,11 @@ export async function getOrderById(req, res, next) {
 
 export async function trackOrder(req, res, next) {
   try {
-    const order = await orderService.getOrderByNumber(req.params.orderNumber);
+    const order = await orderService.getOrderByNumber(
+      req.params.orderNumber,
+      req.user,
+      req.get("X-Payment-Access-Token"),
+    );
     res.status(200).json({
       success: true,
       data: {

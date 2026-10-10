@@ -15,18 +15,29 @@ const app = express();
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Autoriser les requêtes sans origine (comme Postman ou curl) et les ports frontend locaux
-      if (!origin || origin.includes("localhost") || origin.includes("127.0.0.1") || origin === env.CLIENT_URL) {
+      // Les outils serveur (health check, curl) n'envoient pas d'origine. Les
+      // navigateurs sont strictement limités aux origines configurées.
+      const isLocalDevelopmentOrigin =
+        env.NODE_ENV !== "production" &&
+        (origin?.startsWith("http://localhost:") || origin?.startsWith("http://127.0.0.1:"));
+      if (!origin || isLocalDevelopmentOrigin || env.CORS_ORIGINS.includes(origin)) {
         callback(null, true);
       } else {
-        callback(null, true); // En dev permissif, ajustable en prod
+        callback(new Error("Origine CORS non autorisée."));
       }
     },
     credentials: true,
   }),
 );
 
-app.use(express.json());
+// Middleware de capture du corps brut pour vérification de signature des webhooks (ex: SasPay)
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Servir les factures PDF générées pour téléchargement direct si nécessaire

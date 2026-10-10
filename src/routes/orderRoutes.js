@@ -22,7 +22,7 @@ router.post(
 );
 
 // Suivi public d'une commande par son numéro officiel (ex: POP-2026-1001)
-router.get("/track/:orderNumber", orderController.trackOrder);
+router.get("/track/:orderNumber", optionalAuthenticate, orderController.trackOrder);
 
 // Commandes de l'utilisateur connecté
 router.get("/my-orders", authenticate, orderController.getMyOrders);

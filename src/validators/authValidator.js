@@ -11,3 +11,8 @@ export const loginSchema = z.object({
   email: z.string().email("Adresse e-mail invalide"),
   password: z.string().min(1, "Le mot de passe est obligatoire"),
 });
+
+export const updateProfileSchema = z.object({
+  name: z.string().min(2, "Le nom doit contenir au moins 2 caractères").optional(),
+  phone: z.string().min(6, "Numéro de téléphone invalide").optional(),
+});
